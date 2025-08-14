@@ -16,11 +16,11 @@ import (
 
 // Config estructura de configuración
 type Config struct {
-	Port            string        `json:"port"`
-	LogDir          string        `json:"log_dir"`
-	LogFileLifetime time.Duration `json:"log_file_lifetime_hours"`
-	MaxLogSize      int64         `json:"max_log_size_mb"`
-	TimeZone        string        `json:"timezone"`
+	Port                 string `json:"port"`
+	LogDir               string `json:"log_dir"`
+	LogFileLifetimeHours int    `json:"log_file_lifetime_hours"`
+	MaxLogSize           int64  `json:"max_log_size_mb"`
+	TimeZone             string `json:"timezone"`
 }
 
 // LogEntry estructura para las entradas de log
@@ -51,10 +51,11 @@ type LogRequest struct {
 
 // LogService servicio principal de logs
 type LogService struct {
-	config     Config
-	mu         sync.Mutex
-	fileHandle *os.File
-	location   *time.Location
+	config          Config
+	mu              sync.Mutex
+	fileHandle      *os.File
+	location        *time.Location
+	logFileLifetime time.Duration
 }
 
 // NewLogService crea una nueva instancia del servicio
@@ -75,9 +76,13 @@ func NewLogService(config Config) (*LogService, error) {
 		loc = time.UTC
 	}
 
+	// Calcular duración del lifetime
+	lifetime := time.Duration(config.LogFileLifetimeHours) * time.Hour
+
 	service := &LogService{
-		config:   config,
-		location: loc,
+		config:          config,
+		location:        loc,
+		logFileLifetime: lifetime,
 	}
 
 	// Iniciar limpieza de logs antiguos
@@ -107,6 +112,7 @@ func (ls *LogService) rotateLogIfNeeded() error {
 			return fmt.Errorf("error abriendo archivo de log: %v", err)
 		}
 		ls.fileHandle = file
+		log.Printf("Archivo de log abierto: %s", currentFile)
 	}
 
 	// Verificar tamaño del archivo
@@ -202,6 +208,9 @@ func (ls *LogService) cleanupOldLogs() {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
+	// Ejecutar limpieza inicial
+	ls.removeOldFiles()
+
 	for {
 		select {
 		case <-ticker.C:
@@ -212,13 +221,17 @@ func (ls *LogService) cleanupOldLogs() {
 
 // removeOldFiles elimina archivos más antiguos que el tiempo configurado
 func (ls *LogService) removeOldFiles() {
+	if ls.logFileLifetime == 0 {
+		return // No eliminar si el lifetime es 0
+	}
+
 	files, err := os.ReadDir(ls.config.LogDir)
 	if err != nil {
 		log.Printf("Error leyendo directorio de logs: %v", err)
 		return
 	}
 
-	cutoffTime := time.Now().Add(-ls.config.LogFileLifetime)
+	cutoffTime := time.Now().Add(-ls.logFileLifetime)
 
 	for _, file := range files {
 		if file.IsDir() {
@@ -307,7 +320,7 @@ func (ls *LogService) handleStats(w http.ResponseWriter, r *http.Request) {
 		"total_files":    fileCount,
 		"total_size_mb":  float64(totalSize) / 1024 / 1024,
 		"log_directory":  ls.config.LogDir,
-		"lifetime_hours": ls.config.LogFileLifetime.Hours(),
+		"lifetime_hours": ls.config.LogFileLifetimeHours,
 		"max_size_mb":    ls.config.MaxLogSize,
 	}
 
@@ -318,16 +331,36 @@ func (ls *LogService) handleStats(w http.ResponseWriter, r *http.Request) {
 func loadConfig() Config {
 	// Valores por defecto
 	config := Config{
-		Port:            getEnv("PORT", "8080"),
-		LogDir:          getEnv("LOG_DIR", "./logs"),
-		LogFileLifetime: time.Duration(getEnvAsInt("LOG_LIFETIME_HOURS", 72)) * time.Hour,
-		MaxLogSize:      int64(getEnvAsInt("MAX_LOG_SIZE_MB", 100)),
-		TimeZone:        getEnv("TIMEZONE", "Europe/Madrid"),
+		Port:                 getEnv("PORT", "8012"),
+		LogDir:               getEnv("LOG_DIR", "./logs"),
+		LogFileLifetimeHours: getEnvAsInt("LOG_LIFETIME_HOURS", 72),
+		MaxLogSize:           int64(getEnvAsInt("MAX_LOG_SIZE_MB", 100)),
+		TimeZone:             getEnv("TIMEZONE", "Europe/Madrid"),
 	}
 
 	// Intentar cargar desde archivo config.json si existe
 	if configFile, err := os.ReadFile("config.json"); err == nil {
-		json.Unmarshal(configFile, &config)
+		var fileConfig Config
+		if err := json.Unmarshal(configFile, &fileConfig); err == nil {
+			// Solo sobrescribir valores no vacíos del archivo
+			if fileConfig.Port != "" {
+				config.Port = fileConfig.Port
+			}
+			if fileConfig.LogDir != "" {
+				config.LogDir = fileConfig.LogDir
+			}
+			if fileConfig.LogFileLifetimeHours > 0 {
+				config.LogFileLifetimeHours = fileConfig.LogFileLifetimeHours
+			}
+			if fileConfig.MaxLogSize > 0 {
+				config.MaxLogSize = fileConfig.MaxLogSize
+			}
+			if fileConfig.TimeZone != "" {
+				config.TimeZone = fileConfig.TimeZone
+			}
+		} else {
+			log.Printf("Error parseando config.json: %v", err)
+		}
 	}
 
 	return config
@@ -347,6 +380,13 @@ func getEnvAsInt(key string, defaultValue int) int {
 		return intVal
 	}
 	return defaultValue
+}
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s %s", r.Method, r.RequestURI, r.RemoteAddr)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func main() {
@@ -369,18 +409,12 @@ func main() {
 	router.Use(loggingMiddleware)
 
 	// Iniciar servidor
-	log.Printf("Servidor de logs iniciado en puerto %s", config.Port)
-	log.Printf("Directorio de logs: %s", config.LogDir)
-	log.Printf("Tiempo de vida de logs: %.0f horas", config.LogFileLifetime.Hours())
+	log.Printf("🚀 Servidor Goyujin iniciado en puerto %s", config.Port)
+	log.Printf("📁 Directorio de logs: %s", config.LogDir)
+	log.Printf("⏰ Tiempo de vida de logs: %d horas", config.LogFileLifetimeHours)
+	log.Printf("💾 Tamaño máximo de archivo: %d MB", config.MaxLogSize)
 
 	if err := http.ListenAndServe(":"+config.Port, router); err != nil {
 		log.Fatal("Error iniciando servidor:", err)
 	}
-}
-
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s %s", r.Method, r.RequestURI, r.RemoteAddr)
-		next.ServeHTTP(w, r)
-	})
 }
