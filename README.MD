@@ -414,12 +414,6 @@ GOOS=windows GOARCH=amd64 go build -o audit-service.exe
 GOOS=darwin GOARCH=amd64 go build -o audit-service
 ```
 
-### Generar documentación
-```bash
-godoc -http=:6060
-# Navegar a http://localhost:6060
-```
-
 ## Roadmap
 
 - [ ] Soporte para múltiples backends (ElasticSearch, MongoDB)
@@ -430,19 +424,6 @@ godoc -http=:6060
 - [ ] Integración con sistemas SIEM
 - [ ] Métricas Prometheus
 - [ ] Encriptación de logs sensibles
-
-## Licencia
-
-MIT License - Ver archivo LICENSE para más detalles.
-
-## Contribuir
-
-Las contribuciones son bienvenidas. Por favor:
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
 
 ## Soporte
 
