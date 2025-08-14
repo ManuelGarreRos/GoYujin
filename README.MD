@@ -1,4 +1,6 @@
-# Microservicio de Logs y Auditoría
+# <p align=center> GoYujin | Go유진 </p>
+
+# <p align=center> Microservicio de Logs y Auditoría </p>
 
 ## Descripción
 
