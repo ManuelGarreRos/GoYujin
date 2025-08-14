@@ -1,4 +1,4 @@
-package Goyujin
+package main
 
 import (
 	"encoding/base64"
@@ -60,8 +60,12 @@ type LogService struct {
 // NewLogService crea una nueva instancia del servicio
 func NewLogService(config Config) (*LogService, error) {
 	// Crear directorio de logs si no existe
-	if err := os.MkdirAll(config.LogDir, 0755); err != nil {
-		return nil, fmt.Errorf("error creando directorio de logs: %v", err)
+	_, err := os.Stat(config.LogDir)
+	if os.IsNotExist(err) {
+		log.Printf("Directorio de logs no existe, creando: %s", config.LogDir)
+		if err := os.MkdirAll(config.LogDir, 0755); err != nil {
+			return nil, fmt.Errorf("error creando directorio de logs: %v", err)
+		}
 	}
 
 	// Configurar zona horaria

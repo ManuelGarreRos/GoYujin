@@ -1,6 +1,6 @@
 {
   "port": "8012",
-  "log_dir": "/var/log/audit",
+  "log_dir": "./logs",
   "log_file_lifetime_hours": 72,
   "max_log_size_mb": 100,
   "timezone": "Europe/Madrid"

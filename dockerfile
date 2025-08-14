@@ -1,32 +1,29 @@
-FROM golang:1.25-alpine AS builder
+# Imagen mínima de Alpine Linux
+FROM alpine:3.18
+
+# Instalar certificados CA y timezone data
+RUN apk --no-cache add ca-certificates tzdata && \
+    addgroup -g 1000 -S appuser && \
+    adduser -u 1000 -S appuser -G appuser
 
 WORKDIR /app
 
-# Copiar archivos de dependencias
-COPY go.mod go.sum ./
-RUN go mod download
+# Copiar binario pre-compilado y config
+COPY --chown=appuser:appuser goyujin .
+COPY --chown=appuser:appuser config.json .
 
-# Copiar código fuente
-COPY . .
+# Crear directorio de logs con permisos correctos
+RUN mkdir -p /var/log/audit && \
+    chown -R appuser:appuser /var/log/audit && \
+    chmod +x goyujin
 
-# Compilar
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o audit-service .
+# Cambiar a usuario no-root
+USER appuser
 
-# Imagen final
-FROM alpine:latest
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8012/health || exit 1
 
-RUN apk --no-cache add ca-certificates tzdata
-
-WORKDIR /root/
-
-# Copiar binario compilado
-COPY --from=builder /app/audit-service .
-COPY --from=builder /app/config.json .
-
-# Crear directorio de logs
-RUN mkdir -p /var/log/audit
-
-# Exponer puerto
-EXPOSE 8080
+EXPOSE 8012
 
 CMD ["./goyujin"]

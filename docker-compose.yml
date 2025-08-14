@@ -1,22 +1,29 @@
+# docker-compose.yml
+version: '3.8'
+
 services:
-  audit-service:
-    build: .
+  goyujin-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: goyujin-service
     ports:
       - "8012:8012"
     volumes:
       - ./logs:/var/log/audit
-      - ./config.json:/root/config.json
+      - ./config.json:/app/config.json:ro
     environment:
-      - PORT=8080
+      - PORT=8012
       - LOG_DIR=/var/log/audit
       - LOG_LIFETIME_HOURS=72
       - MAX_LOG_SIZE_MB=100
       - TIMEZONE=Europe/Madrid
     restart: unless-stopped
     networks:
-      - audit-network
+      - goyujin-network
+    # Para debug, descomenta estas líneas:
+    # command: ["/bin/sh", "-c", "echo 'Architecture:' && uname -m && echo 'Binary info:' && file goyujin && ./goyujin"]
 
 networks:
-  audit-network:
+  goyujin-network:
     driver: bridge
